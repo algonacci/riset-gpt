@@ -8,3 +8,8 @@ Raka dan Siti kemudian pulang melewati jembatan kecil di atas sungai.
 Sesampainya di rumah, mereka memasak makanan untuk keluarga.
 Sore hari, hujan turun dengan deras tetapi suasana tetap hangat.
 Malamnya, Raka menulis cerita tentang persahabatan mereka di buku catatan.
+Saya sedang belajar neural network.
+Model ini melakukan next-token prediction.
+Hari ini saya mencoba fine-tuning.
+Training berjalan menggunakan GPU.
+Code-switching Indonesia-Inggris akan dipelajari secara alami apabila pola tersebut sering muncul dalam data.

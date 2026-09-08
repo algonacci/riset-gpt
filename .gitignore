@@ -157,6 +157,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Generated dataset exports and local Hugging Face data
+/alpaca_indonesia.csv
+/data/
+
 # Spyder project settings
 .spyderproject
 .spyproject

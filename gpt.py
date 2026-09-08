@@ -1,3 +1,6 @@
+import json
+import random
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -30,8 +33,13 @@ dropout = 0.2
 torch.manual_seed(1337)
 
 # wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
-with open('indo_input.txt', 'r', encoding='utf-8') as f:
-    text = f.read()
+with open('indo_input.jsonl', 'r', encoding='utf-8') as f:
+    records = [json.loads(line)['text'] for line in f if line.strip()]
+random.Random(1337).shuffle(records)
+record_split = int(0.9 * len(records))
+train_text = '\n'.join(records[:record_split])
+val_text = '\n'.join(records[record_split:])
+text = train_text + '\n' + val_text
 
 # here are all the unique characters that occur in this text
 chars = sorted(list(set(text)))
@@ -43,10 +51,8 @@ encode = lambda s: [stoi[c] for c in s] # encoder: take a string, output a list 
 decode = lambda l: ''.join([itos[i] for i in l]) # decoder: take a list of integers, output a string
 
 # Train and test splits
-data = torch.tensor(encode(text), dtype=torch.long)
-n = int(0.9*len(data)) # first 90% will be train, rest val
-train_data = data[:n]
-val_data = data[n:]
+train_data = torch.tensor(encode(train_text), dtype=torch.long)
+val_data = torch.tensor(encode(val_text), dtype=torch.long)
 
 # data loading
 def get_batch(split):
