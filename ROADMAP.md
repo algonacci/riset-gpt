@@ -580,3 +580,199 @@ dan efisiensi tokenizer pada setiap bahasa/domain.
 Untuk tahap awal, jangan mulai dari FineWeb atau The Stack penuh. Sample kecil
 yang terukur lebih berguna untuk memahami data pipeline, training dynamics, dan
 evaluation sebelum skala data memperbesar biaya setiap kesalahan.
+
+## Strategi Hardware dan Eksperimen Satu Jam
+
+Proses belajar ini perlu dijaga tetap menyenangkan dan menghasilkan pengetahuan.
+Prinsip kerja setiap sesi:
+
+> Satu eksperimen berdurasi maksimal sekitar satu jam harus menjawab satu
+> pertanyaan yang terukur.
+
+Contoh pertanyaan:
+
+- Apakah tokenizer BPE 8k lebih efisien daripada 16k untuk bahasa Indonesia?
+- Apakah SwiGLU menurunkan validation loss dibanding ReLU?
+- Apakah RoPE lebih baik daripada learned position embedding?
+- Berapa campuran data Indonesia dan Inggris yang paling efektif?
+- Apakah model 30M mengalahkan 10M pada token budget yang sama?
+
+### Pembagian hardware
+
+| Hardware | Kekuatan | Penggunaan utama |
+|---|---|---|
+| RTX 4060 8 GB | Iterasi lokal cepat | Development, debugging, profiling, training 1M-50M |
+| Colab T4 16 GB | VRAM lebih besar dan remote | Eksperimen 20M-100M, portability, LoRA/QLoRA |
+| DGX Spark 128 GB unified | Kapasitas memori besar | 100M-500M, long context, continued pretraining, distillation |
+
+DGX Spark terutama membuka kapasitas model dan context yang lebih besar. Ia
+tidak otomatis lebih cepat daripada seluruh GPU datacenter, sehingga throughput
+nyata tetap perlu diukur.
+
+### RTX 4060
+
+Target eksperimen yang nyaman:
+
+```text
+1M-30M parameter
+context 128-512
+10M-100M training token
+10-60 menit per eksperimen
+```
+
+Gunakan untuk tokenizer, implementasi model, data pipeline, ablation kecil,
+profiling, generation, dan Nano Gatra. Jangan menghabiskan waktu hardware yang
+lebih mahal untuk mencari typo, shape mismatch, atau bug dasar.
+
+### Colab T4
+
+Gunakan T4 untuk batch/context yang tidak muat di RTX 4060, validasi bahwa
+project reproducible di mesin lain, dan menjalankan training saat laptop sedang
+dipakai. Target praktis:
+
+```text
+20M-100M dari nol untuk eksperimen terbatas
+0.5B-3B untuk LoRA/QLoRA
+```
+
+Karena sesi Colab dapat terputus, checkpoint periodik, resume otomatis, dan
+sinkronisasi metrics/artefak ke persistent storage adalah fitur wajib.
+
+### DGX Spark
+
+Gunakan setelah pipeline lolos smoke test dan study run lokal:
+
+- Gatra 100M-500M dari nol.
+- Context lebih panjang dan batch lebih besar.
+- Continued pretraining model 0.5B-3B.
+- LoRA/QLoRA model yang lebih besar.
+- Teacher inference untuk synthetic data.
+- Distillation.
+- Batch evaluation dengan model judge dan verifier.
+
+Model 1B+ dari nol tetap membutuhkan token budget dan durasi besar agar benar-
+benar bagus. Dalam sesi satu jam, model 100M-350M lebih cocok untuk eksperimen
+scaling daripada target produk final.
+
+## Kapan Model Mulai Terasa Nyata
+
+### 1M-10M parameter
+
+- Belajar ejaan, format, dan pola lokal.
+- Cocok untuk validasi implementasi.
+- Belum menjadi asisten yang dapat dipercaya.
+
+### 30M-100M parameter
+
+- Mulai menghasilkan paragraf sederhana.
+- Dapat mengikuti pola instruksi yang terbatas.
+- Dapat menunjukkan generalisasi pada domain sempit.
+- Titik menarik untuk model from-scratch yang mulai terasa nyata.
+
+### 100M-500M parameter
+
+- Base model kecil yang berguna untuk riset efisiensi dan specialization.
+- Bahasa lebih konsisten jika data dan token budget memadai.
+- Instruction following sederhana setelah SFT.
+- Target jangka menengah Gatra from scratch.
+
+### Pretrained 0.5B-3B dengan post-training
+
+- Jalur tercepat menuju percakapan dan instruction following yang berguna.
+- Cocok untuk RAG, tool calling, domain specialization, dan deployment lokal.
+- Tidak perlu mengulang seluruh biaya pretraining dari nol.
+
+## Dua Track Gatra
+
+### Track A: Gatra from scratch
+
+Tujuan utamanya riset, pemahaman, dan pengukuran scaling:
+
+```text
+Gatra-1M
+-> Gatra-10M
+-> Gatra-30M
+-> Gatra-100M
+-> Gatra-350M
+```
+
+Semua ukuran sebaiknya menggunakan pipeline, tokenizer, benchmark, dan format
+laporan yang konsisten agar hasilnya dapat dibandingkan.
+
+### Track B: Gatra yang berguna
+
+Tujuan utamanya produk dan kemampuan praktis:
+
+```text
+pretrained base 0.5B-3B
+-> continued pretraining Indonesia/English
+-> supervised instruction tuning
+-> preference optimization
+-> tool calling dan retrieval
+-> quantization dan deployment
+```
+
+Track A membangun kompetensi membuat model. Track B memberikan model berguna
+lebih cepat. Keduanya saling memberi data, evaluator, dan pelajaran engineering.
+
+## Mode Training
+
+Sediakan tiga profil agar eksperimen tidak selalu berubah menjadi training
+panjang:
+
+```text
+smoke : 1-5 menit, memastikan pipeline benar
+study : 30-60 menit, menjawab satu hipotesis
+run   : beberapa jam atau semalam, kandidat milestone
+```
+
+Perbandingan eksperimen sebaiknya memakai jumlah token yang telah diproses:
+
+```text
+tokens_seen = batch_size x block_size x optimizer_steps
+```
+
+Iteration count saja tidak adil ketika batch size, context, gradient
+accumulation, atau hardware berbeda.
+
+## Otomasi Eksperimen
+
+Setiap training run idealnya otomatis:
+
+1. Membaca file konfigurasi.
+2. Menyimpan snapshot config dan commit hash.
+3. Menghitung jumlah parameter dan token budget.
+4. Mencatat loss, perplexity, token per detik, dan penggunaan VRAM.
+5. Mengevaluasi prompt tetap dan benchmark kecil.
+6. Menyimpan latest dan best checkpoint.
+7. Mendukung resume tanpa mengulang data secara keliru.
+8. Berhenti rapi berdasarkan batas waktu.
+9. Menghasilkan laporan perbandingan dengan baseline.
+
+Target antarmuka:
+
+```text
+uv run train.py --config configs/gatra-30m.toml --max-time 60m
+```
+
+Dengan time budget, training dapat dibiarkan berjalan sambil mengerjakan hal
+lain dan tetap menghasilkan checkpoint serta laporan yang valid.
+
+## Milestone Praktis
+
+1. Pisahkan dataset pretraining dan SFT.
+2. Latih tokenizer BPE Indonesia 8k/16k.
+3. Modernisasi model dengan RoPE, RMSNorm, SwiGLU, dan weight tying.
+4. Tambahkan config, checkpoint, resume, mixed precision, dan time limit.
+5. Tetapkan Gatra-10M sebagai baseline pertama.
+6. Latih Gatra-30M dan bandingkan pada token budget yang sama.
+7. Jalankan Gatra-100M di T4 atau DGX Spark.
+8. Adaptasi pretrained 0.5B-3B menjadi Gatra Instruct.
+9. Gunakan usage records untuk evaluation, preference, dan routing.
+10. Turunkan Gatra menjadi Tecton melalui code continued pretraining dan
+    execution-verified SFT/RL.
+
+Target awal yang seimbang:
+
+> Gatra-30M dari nol sebagai model riset, lalu Gatra-1B-Instruct dari pretrained
+> base sebagai model yang berguna.
