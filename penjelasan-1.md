@@ -25,6 +25,68 @@ Basic yang diasumsikan:
 - Memahami tensor dan training loop secara umum.
 - Tidak memerlukan matematika berat untuk mengikuti penjelasan.
 
+### Cara membaca materi ini
+
+Mulai dari versi intuitifnya.
+
+Lalu lihat equation.
+
+Setiap equation akan dibaca dengan urutan:
+
+1. Apa tujuan equation tersebut?
+2. Apa arti setiap simbolnya?
+3. Apa bentuk tensor yang masuk dan keluar?
+4. Apa interpretasinya dalam bahasa biasa?
+5. Baris kode mana yang mengimplementasikannya?
+
+Equation bukan hiasan.
+
+Equation adalah spesifikasi ringkas dari operasi yang dilakukan kode.
+
+### Kamus istilah awal
+
+**Token** adalah unit teks yang diproses model.
+
+Token dapat berupa karakter, potongan kata, kata, atau byte.
+
+**Vocabulary** adalah daftar seluruh token yang dikenali tokenizer.
+
+**Tokenizer** adalah aturan yang mengubah teks menjadi token ID dan sebaliknya.
+
+**Token ID** adalah nomor integer yang mewakili sebuah token.
+
+**Embedding** adalah vektor angka yang dipelajari untuk merepresentasikan token.
+
+**Context** adalah token-token sebelumnya yang tersedia saat membuat prediksi.
+
+**Logit** adalah skor mentah model untuk satu kandidat token.
+
+Logit belum merupakan probabilitas.
+
+**Probability** atau probabilitas adalah angka antara 0 dan 1.
+
+Jumlah probabilitas seluruh kandidat token adalah 1.
+
+**Loss** adalah angka yang mengukur seberapa salah prediksi model.
+
+**Gradient** menunjukkan arah dan besar perubahan parameter untuk menurunkan loss.
+
+**Parameter** adalah angka di dalam model yang dipelajari selama training.
+
+**Layer** adalah satu tahap transformasi tensor.
+
+**Block** adalah kumpulan layer yang menjadi satu unit berulang dalam Transformer.
+
+Dalam proyek ini, satu block berisi attention, feed-forward, normalization, dan residual connection.
+
+**Attention** adalah mekanisme untuk mencampur informasi antar-token berdasarkan relevansinya.
+
+**Attention head** adalah satu jalur attention dengan proyeksi Query, Key, dan Value miliknya sendiri.
+
+**Multi-head attention** adalah beberapa attention head yang berjalan paralel.
+
+**Decoder-only** adalah Transformer yang memprediksi token berikutnya dengan hanya melihat token sebelumnya.
+
 ---
 
 ## 1. Tujuan Language Model
@@ -42,9 +104,66 @@ Model tidak langsung menulis satu paragraf.
 
 Model hanya melakukan satu langkah:
 
+$$
+P(x_t \mid x_{<t})
+$$
+
+### Cara membaca equation
+
+**Tujuan:** menghitung probabilitas token pada posisi sekarang.
+
+**Simbol:**
+
+- $P$ berarti probability atau probabilitas.
+- $x_t$ adalah token yang ingin diprediksi pada posisi $t$.
+- $t$ adalah indeks posisi dalam sequence.
+- $x_{<t}$ berarti seluruh token sebelum posisi $t$.
+- Garis vertikal $\mid$ dibaca "dengan mengetahui" atau "dikondisikan pada".
+
+Equation itu dibaca:
+
+> Probabilitas token $x_t$, dengan mengetahui semua token sebelum posisi $t$.
+
+Contoh:
+
 ```text
-P(token berikutnya | token-token sebelumnya)
+x_<t = "Saya sedang belajar"
+x_t  = "AI"
 ```
+
+Model menghitung seberapa mungkin `AI` muncul setelah `Saya sedang belajar`.
+
+Model sebenarnya menghitung probabilitas untuk seluruh vocabulary.
+
+```text
+P("AI")      = 0,35
+P("di")      = 0,15
+P("membuat") = 0,10
+...
+```
+
+### Probabilitas seluruh sequence
+
+Probabilitas sebuah sequence dapat dipecah menjadi prediksi token demi token:
+
+$$
+P(x_1, x_2, \ldots, x_T)
+= \prod_{t=1}^{T} P(x_t \mid x_{<t})
+$$
+
+**Simbol:**
+
+- $T$ adalah jumlah token dalam sequence.
+- $\prod$ berarti mengalikan hasil untuk setiap posisi.
+- Setiap faktor adalah probabilitas satu token berdasarkan token sebelumnya.
+
+**Interpretasi:**
+
+Model tidak perlu memprediksi seluruh kalimat sekaligus.
+
+Ia cukup belajar banyak prediksi token berikutnya.
+
+Gabungan prediksi lokal tersebut membentuk probabilitas seluruh teks.
 
 Setelah satu token dipilih, token itu ditambahkan ke input.
 
@@ -258,6 +377,48 @@ Ia sudah memiliki:
 - LayerNorm.
 - LM head.
 
+### Apa itu Transformer block?
+
+Transformer block adalah unit pemrosesan yang diulang beberapa kali.
+
+Di `gpt.py`:
+
+```python
+self.blocks = nn.Sequential(
+    *[Block(n_embd, n_head=n_head) for _ in range(n_layer)]
+)
+```
+
+Jika `n_layer = 4`, ada empat block berurutan.
+
+Satu block menerima tensor `(B, T, C)`.
+
+Block juga mengeluarkan tensor `(B, T, C)`.
+
+Bentuknya sengaja tetap sama.
+
+Karena itu block dapat ditumpuk.
+
+Isi satu block:
+
+```text
+input
+-> LayerNorm
+-> multi-head attention
+-> residual addition
+-> LayerNorm
+-> feed-forward network
+-> residual addition
+-> output
+```
+
+Interpretasinya:
+
+- Attention memungkinkan token saling bertukar informasi.
+- Feed-forward memproses informasi pada setiap token.
+- Residual menjaga informasi lama tetap memiliki jalur langsung.
+- LayerNorm membantu kestabilan aktivasi dan training.
+
 ![Arsitektur GPT decoder-only](docs/assets/penjelasan-1-transformer.png)
 
 ### Token embedding
@@ -300,6 +461,16 @@ apa tokennya + token itu berada di mana
 
 Self-attention membuat satu token membaca token lain.
 
+**Definisi attention:** mekanisme yang menghitung seberapa relevan token-token
+lain, lalu mencampur informasinya memakai bobot relevansi tersebut.
+
+**Definisi self-attention:** Query, Key, dan Value semuanya berasal dari sequence
+yang sama.
+
+Kata `self` merujuk pada sumber yang sama.
+
+Bukan berarti model memiliki kesadaran diri.
+
 Setiap token menghasilkan tiga representasi:
 
 ```text
@@ -307,6 +478,213 @@ Query  : apa yang sedang saya cari?
 Key    : informasi apa yang saya miliki?
 Value  : isi apa yang akan saya berikan?
 ```
+
+### Membentuk Query, Key, dan Value
+
+Dari input embedding $X$, model membuat tiga proyeksi linear:
+
+$$
+Q = XW_Q
+$$
+
+$$
+K = XW_K
+$$
+
+$$
+V = XW_V
+$$
+
+**Simbol:**
+
+- $X$ adalah representasi token yang masuk ke attention.
+- $W_Q$ adalah parameter proyeksi Query.
+- $W_K$ adalah parameter proyeksi Key.
+- $W_V$ adalah parameter proyeksi Value.
+- $Q$, $K$, dan $V$ adalah tensor hasil proyeksi.
+
+Huruf $W$ biasa dipakai untuk weight atau bobot parameter.
+
+Ketiga matriks $W$ dipelajari saat training.
+
+Di kode:
+
+```python
+k = self.key(x)
+q = self.query(x)
+v = self.value(x)
+```
+
+Jika input memiliki bentuk:
+
+```text
+X = (B, T, C)
+```
+
+Maka dalam satu head:
+
+```text
+Q = (B, T, head_size)
+K = (B, T, head_size)
+V = (B, T, head_size)
+```
+
+### Equation scaled dot-product attention
+
+Versi ringkas attention:
+
+$$
+\operatorname{Attention}(Q,K,V)
+= \operatorname{softmax}\left(
+\frac{QK^\top + M}{\sqrt{d_k}}
+\right)V
+$$
+
+Equation ini dapat dipecah menjadi lima langkah.
+
+### 1. Menghitung kecocokan Query dan Key
+
+$$
+S = QK^\top
+$$
+
+**Simbol:**
+
+- $S$ adalah attention score sebelum scaling dan softmax.
+- $K^\top$ adalah Key yang ditranspose pada dua dimensi terakhir.
+- Operator perkalian adalah matrix multiplication.
+
+**Bentuk tensor:**
+
+```text
+Q   : (B, T, head_size)
+K^T : (B, head_size, T)
+S   : (B, T, T)
+```
+
+**Interpretasi:**
+
+Setiap posisi membandingkan Query miliknya dengan Key milik setiap posisi.
+
+Nilai besar berarti pasangan tersebut lebih cocok menurut parameter saat ini.
+
+### 2. Melakukan scaling
+
+$$
+S_{scaled} = \frac{S}{\sqrt{d_k}}
+$$
+
+**Simbol:**
+
+- $d_k$ adalah ukuran dimensi Key dalam satu head.
+- Pada kode, $d_k$ sama dengan `head_size`.
+- $\sqrt{d_k}$ adalah akar kuadrat dari ukuran head.
+
+**Interpretasi:**
+
+Dot product cenderung membesar ketika dimensinya membesar.
+
+Skor yang terlalu besar membuat softmax terlalu tajam.
+
+Scaling menjaga distribusi lebih stabil.
+
+Di kode:
+
+```python
+wei = q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5
+```
+
+Perkalian dengan $d_k^{-0.5}$ sama dengan pembagian oleh $\sqrt{d_k}$.
+
+### 3. Menambahkan causal mask
+
+$$
+S_{masked} = S_{scaled} + M
+$$
+
+**Simbol:**
+
+- $M$ adalah causal mask.
+- Posisi yang boleh dilihat mendapat nilai 0.
+- Posisi masa depan mendapat nilai $-\infty$.
+
+Contoh mask untuk empat token:
+
+$$
+M =
+\begin{bmatrix}
+0 & -\infty & -\infty & -\infty \\
+0 & 0 & -\infty & -\infty \\
+0 & 0 & 0 & -\infty \\
+0 & 0 & 0 & 0
+\end{bmatrix}
+$$
+
+**Interpretasi per baris:**
+
+- Token pertama hanya dapat melihat token pertama.
+- Token kedua dapat melihat token pertama dan kedua.
+- Token ketiga dapat melihat tiga token pertama.
+- Token keempat dapat melihat seluruh token sampai posisinya.
+
+### 4. Mengubah skor menjadi bobot
+
+$$
+A = \operatorname{softmax}(S_{masked})
+$$
+
+**Simbol:**
+
+- $A$ adalah attention weights.
+- Setiap baris $A$ berjumlah 1.
+- Nilainya berada antara 0 dan 1.
+
+Softmax untuk sebuah vektor skor $z$:
+
+$$
+\operatorname{softmax}(z_i)
+= \frac{e^{z_i}}{\sum_j e^{z_j}}
+$$
+
+**Simbol:**
+
+- $z_i$ adalah skor kandidat ke-$i$.
+- $e$ adalah bilangan Euler, basis fungsi eksponensial.
+- $\sum_j$ berarti menjumlahkan seluruh kandidat.
+
+**Interpretasi:**
+
+Softmax mengubah skor relatif menjadi distribusi bobot.
+
+Posisi dengan skor lebih besar mendapatkan bobot lebih besar.
+
+Skor $-\infty$ pada masa depan menjadi bobot 0.
+
+### 5. Menggabungkan Value
+
+$$
+O = AV
+$$
+
+**Simbol:**
+
+- $O$ adalah output satu attention head.
+- $A$ adalah bobot attention `(B, T, T)`.
+- $V$ adalah informasi yang akan dicampur `(B, T, head_size)`.
+
+**Bentuk output:**
+
+```text
+O = (B, T, head_size)
+```
+
+**Interpretasi:**
+
+Setiap token mendapatkan weighted sum dari Value token-token yang boleh dilihat.
+
+Attention score menentukan **dari mana membaca**.
+
+Value menentukan **informasi apa yang dibawa**.
 
 Bagian utamanya:
 
@@ -361,7 +739,47 @@ Nilai `-inf` menjadi probabilitas nol setelah softmax.
 
 Satu attention head mempelajari satu ruang hubungan.
 
+**Definisi head:** satu set proyeksi $W_Q$, $W_K$, dan $W_V$, diikuti proses
+scaled dot-product attention.
+
+Head bukan satu neuron.
+
+Head adalah satu jalur attention lengkap.
+
 Beberapa head berjalan paralel.
+
+**Definisi multi-head attention:** menjalankan beberapa head pada input yang
+sama, menggabungkan outputnya, lalu memproyeksikan hasil gabungan.
+
+Equation ringkas:
+
+$$
+\operatorname{MultiHead}(X)
+= \operatorname{Concat}(head_1, \ldots, head_h)W_O
+$$
+
+Dengan:
+
+$$
+head_i = \operatorname{Attention}(Q_i,K_i,V_i)
+$$
+
+**Simbol:**
+
+- $h$ adalah jumlah attention head.
+- $head_i$ adalah output head ke-$i$.
+- $\operatorname{Concat}$ menggabungkan tensor pada dimensi channel.
+- $W_O$ adalah output projection yang mencampur hasil seluruh head.
+
+**Bentuk tensor pada konfigurasi sekarang:**
+
+```text
+input X             : (B, T, 128)
+output setiap head  : (B, T, 32)
+empat head          : 4 x (B, T, 32)
+setelah concat      : (B, T, 128)
+setelah W_O         : (B, T, 128)
+```
 
 ```python
 torch.cat([h(x) for h in self.heads], dim=-1)
@@ -449,11 +867,136 @@ LM head menghasilkan logits.
 
 Logits adalah skor mentah.
 
+Misalnya vocabulary hanya memiliki tiga token:
+
+```text
+logits = [2.1, 0.3, -1.0]
+token  = ["AI", "di", "dan"]
+```
+
+Logit dapat bernilai negatif atau lebih besar dari 1.
+
+Karena itu logit bukan probabilitas.
+
+Softmax mengubah logits menjadi probabilitas.
+
+### Cross-entropy loss
+
+Untuk satu target token, loss dapat ditulis:
+
+$$
+L_t = -\log P(x_t \mid x_{<t})
+$$
+
+**Simbol:**
+
+- $L_t$ adalah loss pada posisi $t$.
+- $P(x_t \mid x_{<t})$ adalah probabilitas yang diberikan model kepada token target.
+- $\log$ adalah logaritma natural.
+- Tanda minus membuat probabilitas tinggi menghasilkan loss kecil.
+
+**Interpretasi angka:**
+
+```text
+probabilitas target tinggi -> loss kecil
+probabilitas target rendah -> loss besar
+```
+
+Contoh:
+
+```text
+P(target) = 0,90 -> -log(0,90) sekitar 0,11
+P(target) = 0,10 -> -log(0,10) sekitar 2,30
+P(target) = 0,01 -> -log(0,01) sekitar 4,61
+```
+
+Model dihukum lebih besar ketika sangat tidak yakin pada jawaban yang benar.
+
+Untuk seluruh batch dan sequence:
+
+$$
+L = -\frac{1}{BT}
+\sum_{b=1}^{B}\sum_{t=1}^{T}
+\log P(x_{b,t} \mid x_{b,<t})
+$$
+
+**Simbol:**
+
+- $B$ adalah jumlah sequence dalam batch.
+- $T$ adalah jumlah posisi dalam setiap sequence.
+- $x_{b,t}$ adalah target pada batch ke-$b$ dan posisi ke-$t$.
+- $BT$ adalah jumlah prediksi token yang dirata-ratakan.
+- $\sum$ berarti menjumlahkan loss semua posisi.
+
+**Interpretasi:**
+
+Satu angka loss merangkum kesalahan banyak prediksi token.
+
+Loss kecil berarti rata-rata model memberi probabilitas lebih tinggi kepada target benar.
+
+Namun loss kecil pada train set belum menjamin generalisasi.
+
 ```python
 loss = F.cross_entropy(logits, targets)
 ```
 
 Cross-entropy memberi penalti ketika target mendapat probabilitas kecil.
+
+PyTorch menghitung `log_softmax` dan negative log-likelihood secara stabil.
+
+Kita tidak perlu memanggil softmax terlebih dahulu saat training.
+
+### Backpropagation
+
+Backpropagation menghitung pengaruh setiap parameter terhadap loss.
+
+Secara ringkas:
+
+$$
+g = \nabla_{\theta} L
+$$
+
+**Simbol:**
+
+- $\theta$ mewakili seluruh parameter model.
+- $L$ adalah loss.
+- $\nabla_{\theta}L$ adalah gradient loss terhadap parameter.
+- $g$ adalah kumpulan gradient yang dihasilkan.
+
+**Interpretasi:**
+
+Gradient menjawab pertanyaan:
+
+> Jika parameter ini diubah sedikit, loss bergerak ke arah mana dan seberapa kuat?
+
+`loss.backward()` menghitung gradient tersebut memakai computation graph PyTorch.
+
+### Optimizer update
+
+Versi paling sederhana, gradient descent:
+
+$$
+\theta_{new} = \theta_{old} - \eta \nabla_{\theta}L
+$$
+
+**Simbol:**
+
+- $\theta_{old}$ adalah parameter sebelum update.
+- $\theta_{new}$ adalah parameter setelah update.
+- $\eta$ adalah learning rate.
+- Gradient dikurangkan agar loss bergerak turun.
+
+Kode memakai AdamW, bukan gradient descent polos.
+
+AdamW menyimpan moving average gradient dan squared gradient.
+
+Namun interpretasi utamanya tetap sama:
+
+```text
+gradient memberi arah
+learning rate mengatur besar langkah
+optimizer menerapkan update
+```
 
 Saat training:
 
@@ -489,6 +1032,12 @@ Seluruh model dilatih end-to-end.
 ## 13. Generation
 
 Saat generation, model hanya memakai logits posisi terakhir.
+
+**Definisi generation:** proses memakai model yang sudah dilatih untuk membuat
+token baru secara autoregresif.
+
+**Definisi sampling:** memilih token berdasarkan distribusi probabilitas,
+bukan selalu mengambil token dengan probabilitas tertinggi.
 
 ```python
 logits = logits[:, -1, :]
